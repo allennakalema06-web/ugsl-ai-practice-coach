@@ -37,6 +37,8 @@ jobs:
         run: |
           python -c "import cv2, mediapipe, psycopg, boto3, prometheus_client"
           python -c "from ugsl_ai_coach.assets import model_paths; model_paths()"
+      - name: Real Hand and Pose initialization diagnostics
+        run: python -m ugsl_ai_coach.deployment.mediapipe_check
       - name: Complete suite with PostgreSQL
         run: python -m pytest --junitxml=ci-results.xml
       - name: PostgreSQL must execute without skips

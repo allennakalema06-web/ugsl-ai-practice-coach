@@ -113,6 +113,10 @@ def test_ci_release_gates():
                      'pip wheel', 'cd /tmp', 'docker build', 'docker run --rm'):
         assert required in runs
     assert not any(word in runs for word in ('docker push', 'render deploy', 'git push'))
+    diagnostic = next(s for s in steps if s.get('name') == 'Real Hand and Pose initialization diagnostics')
+    assert diagnostic['run'] == 'python -m ugsl_ai_coach.deployment.mediapipe_check'
+    assert 'continue-on-error' not in diagnostic
+    assert steps.index(diagnostic) < next(i for i, s in enumerate(steps) if s.get('name') == 'Complete suite with PostgreSQL')
 
 
 @pytest.mark.parametrize('mode', ['pass', 'missing_env', 'skip', 'failure', 'undercollected'])
