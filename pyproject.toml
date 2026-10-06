@@ -14,6 +14,7 @@ dependencies = [
     "mediapipe==1.0.1",
     "opencv-contrib-python==5.0.0.93",
     "numpy==2.5.3",
+    "psycopg[binary]>=3.2,<4.0",
 ]
 
 [project.optional-dependencies]
@@ -22,7 +23,10 @@ dev = ["pytest>=8.3,<10.0", "httpx>=0.28,<1.0"]
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+"ugsl_ai_coach.infrastructure.postgres" = ["migrations/*.sql"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra"
-markers = ["integration: optional offline MediaPipe tests using local model assets"]
+markers = ["integration: optional offline MediaPipe tests using local model assets", "postgres: requires an explicit UGSL_TEST_DATABASE_URL"]
