@@ -4,17 +4,19 @@ The Uganda Sign Language (UgSL) AI Practice Coach will eventually compare learne
 
 ## Current status and scope
 
-Milestone 1 provides a standalone Python service foundation: FastAPI application factory, versioned process health endpoint, typed environment settings, standard-library JSON application logging, and automated tests. **The current service does not evaluate UgSL sign correctness.** No comparison, scoring, coaching, storage, authentication, or frontend is implemented.
+Milestone 1 provides a standalone Python service foundation: FastAPI application factory, versioned process health endpoint, typed environment settings, standard-library JSON application logging, and automated tests. **The current service does not establish UgSL linguistic correctness.** No coaching, storage, authentication, or frontend is implemented.
 
 Milestone 2 adds Structured Findings Contract v1: validated Pydantic domain models and a generated JSON Schema endpoint. It defines what future analysis components may report; it produces no analysis results or feedback.
 
 Milestone 3 adds an internal video-to-movement-observations pipeline using OpenCV and MediaPipe Tasks. It observes physical coordinates and detection coverage only. No new HTTP route, upload, webcam, or `/analyze` behavior is added.
 
+Milestone 4 adds internal reference comparison of normalized wrist movement paths. It emits measured geometry, evidence sufficiency, and provisional MOVEMENT findings using the unchanged M2 contract. **Geometric similarity is not UgSL linguistic correctness.** No public comparison endpoint or coaching is implemented.
+
 ## Architecture principles
 
 The model is a component of the AI Coach, not the AI Coach itself. Future objective CV and comparison stages will produce structured findings; a later LLM layer may explain those findings and must not independently judge sign correctness from raw video. Insufficient confidence must lead to abstention. Previous learner attempts will eventually be immutable historical records.
 
-Requests currently flow through the FastAPI app in `src/ugsl_ai_coach/main.py` to health and contract routers under `/api/v1`. Settings are loaded when the application is created and attached to that app. Logging is configured at startup, with startup/shutdown messages and DEBUG health messages. Application logs are JSON; Uvicorn retains its own server/access logging. `core/` contains configuration and logging, `api/routes/` contains HTTP routes, `domain/analysis.py` defines the authoritative M2 contract, and `cv/` provides internal M3 extraction. Future comparison, coaching, and adapter modules will be added when needed.
+Requests currently flow through the FastAPI app in `src/ugsl_ai_coach/main.py` to health and contract routers under `/api/v1`. Settings are loaded when the application is created and attached to that app. Logging is configured at startup, with startup/shutdown messages and DEBUG health messages. Application logs are JSON; Uvicorn retains its own server/access logging. `core/` contains configuration and logging, `api/routes/` contains HTTP routes, `domain/analysis.py` defines the authoritative M2 contract, `cv/` provides internal M3 extraction, and `comparison/` implements internal M4 reference comparison. Future coaching and adapter modules will be added when needed.
 
 ## Structured Findings Contract v1
 
@@ -30,7 +32,7 @@ Skills are exactly `HANDSHAPE`, `ORIENTATION`, `LOCATION`, `MOVEMENT`, `TIMING`,
 
 Finding statuses are `STRONG`, `ACCEPTABLE`, `NEEDS_IMPROVEMENT`, `WARNING`, and `INSUFFICIENT_EVIDENCE`. All except `INSUFFICIENT_EVIDENCE` require evidence with readable expected/observed strings and a finite numeric deviation. Deviation has no universal range or interpretation in M2. Severity is an explicit integer from 0 (informational) through 3 (major), never inferred from status. Body regions are `LEFT_HAND`, `RIGHT_HAND`, `BOTH_HANDS`, `LEFT_ARM`, `RIGHT_ARM`, `HEAD`, and `UPPER_BODY`. Timestamps are non-negative integers with end >= start.
 
-Scores and confidence are finite values in [0, 1]; percentages such as 91 are rejected. The score is an internal calibrated similarity measure, not automatically a learner grade. NaN, infinities, unexpected fields, fractional timestamps/severity, and numeric strings are rejected. Missing or null evidence is permitted for insufficient-evidence findings without fabricated observations.
+Scores and confidence are finite values in [0, 1]; percentages such as 91 are rejected. A score represents internal similarity, not automatically a learner grade; M4's engineering transformation is explicitly not expert/linguistically calibrated. NaN, infinities, unexpected fields, fractional timestamps/severity, and numeric strings are rejected. Missing or null evidence is permitted for insufficient-evidence findings without fabricated observations.
 
 Contract models are frozen, including nested evidence/findings; findings use an immutable tuple in Python and a JSON array on the wire. This protects validated objects from ordinary accidental mutation, **not database-level historical immutability**. No persistence exists. Construct contracts through normal Pydantic validation; unchecked construction/copy APIs are not a validation boundary.
 
@@ -159,4 +161,66 @@ MediaPipe processes input on device. Its [upstream privacy notice](https://pypi.
 
 ## Future milestones
 
-M4 will address expert-reference comparison of M3 trajectories, calibration, confidence/abstention, and evidence-grounded Structured Findings. Later work may add coaching explanations and persistence/backend/frontend integration. No comparison or learner correctness evaluation exists in M3.
+Future work requires expert UgSL data and calibration, deliberate coverage of unsupported linguistic dimensions, and separately designed coaching/persistence/backend/frontend integration. M5 has not been implemented.
+
+## M4 reference comparison
+
+**PROVISIONAL ENGINEERING THRESHOLDS — NOT YET LINGUISTICALLY VALIDATED.** M4 v1 covers `MOVEMENT` only. It does not validate handshape, orientation, location, timing, sequence, movement range, body position, semantics, grammar, or facial/non-manual features. A geometrically different path is not necessarily invalid UgSL. Future expert calibration is required before interpreting geometric bands linguistically.
+
+`compare_movement(reference, learner, request, policy)` accepts two existing M3 `ExtractionResult` objects and returns a frozen `ComparisonOutcome`. It never opens videos or calls MediaPipe. The caller supplies an expert-validated reference through upstream context; M4 checks technical usability, not expertise. The request contains analysis/attempt/finding IDs, a reference ID, and explicit hand correspondence. No additional dependency is used.
+
+### Selection and correspondence
+
+`HandCorrespondence` requires a reference model-reported label, learner model-reported label, caller-established anatomical body region, and non-empty establishment basis. Absent correspondence causes abstention. This attestation does not independently verify identity: upstream metadata/calibration must establish it. M4 never selects the cheapest hand pairing, swaps labels, mirrors coordinates, or guesses identity from image position. Explicitly different reference/learner labels are allowed only when the caller supplies their correspondence.
+
+Use normalized hand landmark **0 (wrist)** x/y only. No raw z, hand-landmark averaging, trajectory recentering, or new normalization is applied. Every selected trajectory retains sampled timestamps/frame indices and availability states. Missing hands, duplicate matching labels, missing/low label confidence, unavailable normalization, or missing normalized wrists are gaps. Inconsistent raw/normalized detection indexing is invalid caller input. No zeros, coordinate carry-forward, or interpolation fill gaps.
+
+### Eligibility and confidence
+
+Count actual usable wrist observations and their fraction of all sampled frames separately for reference and learner. Both must meet the configured count/coverage thresholds before DTW. Coverage is frame-based, not duration-weighted. Confidence is the auditable evidence-sufficiency surrogate:
+
+```text
+min(reference_coverage, learner_coverage,
+    min(1, reference_usable_count / minimum_usable_observations),
+    min(1, learner_usable_count / minimum_usable_observations))
+```
+
+It contains no coordinates, distance, similarity, or status-band values. Thus fully observed different paths can have low similarity and confidence 1. Confidence is not a calibrated probability of linguistic correctness. No established correspondence yields confidence 0. Missing observations affect confidence; maximum gaps and observed duration remain descriptive metrics, not timing judgments. DTW compares actual observed sequences across gaps, without claiming to reconstruct unobserved motion.
+
+### Alignment, metrics, and similarity
+
+Exact global DTW aligns the available normalized x/y observations using Euclidean distance in shoulder-width units. It minimizes cumulative local cost, permitting diagonal, reference-advance, and learner-advance steps. Ties prefer those steps in that order. Cost rows use O(learner count) memory; a bounded one-byte-per-cell predecessor grid reconstructs the complete path. Time is O(reference count × learner count). Empty, missing, unordered, or non-finite input is rejected.
+
+Returned metrics include reference/learner sampled and usable counts, usable coverage, first-to-last usable duration, largest usable timestamp gap, cumulative DTW cost, alignment path length, cumulative cost divided by path length, engineering similarity, and evidence confidence. Mean path distance is the mean along the **minimum-cumulative-cost path**, not a separate minimum-mean optimization or a mathematical distance metric guarantee.
+
+Engineering movement similarity is `scale / (scale + mean_path_distance)`: distance 0 gives 1; increasing distance monotonically reduces similarity. The configurable scale is the distance giving similarity 0.5. Numerically stable evaluation avoids overflow. This simple mapping is a dimensionless engineering convenience, not expert-calibrated correctness. DTW accommodates speed/length differences and does not measure linguistic timing correctness.
+
+### Default versioned policy
+
+Algorithm: `movement-wrist-dtw-v1`. Policy: `provisional-engineering-v1`. The policy snapshot has `linguistically_validated=False`; all configurable values and band mappings are retained in the outcome. M2 `model_version` combines algorithm/policy version identifiers. Supply a new policy version when replacing thresholds/mappings.
+
+| Setting | Default | Meaning |
+| --- | --- | --- |
+| Minimum usable observations | 8 per trajectory | Eligibility; provisional, not expert calibrated |
+| Reference coverage minimum | 0.8 | Eligibility; provisional, not expert calibrated |
+| Learner coverage minimum | 0.8 | Eligibility; provisional, not expert calibrated |
+| Handedness confidence minimum | 0.5 | Per-frame label filter; provisional, not anatomical calibration |
+| Similarity distance scale | 1 shoulder width | Engineering mapping; not expert calibrated |
+| Strong maximum mean distance | 0.1 shoulder widths, inclusive | Provisional `STRONG`, severity 0 |
+| Acceptable maximum mean distance | 0.3 shoulder widths, inclusive | Provisional `ACCEPTABLE`, severity 0 |
+| Distance above acceptable maximum | >0.3 shoulder widths | Provisional `NEEDS_IMPROVEMENT`, severity 1 |
+| Maximum alignment cells | 1,000,000 | Processing resource limit, not a linguistic threshold |
+
+All status and severity mappings live in the policy and are replaceable within M2's existing enums/ranges. Insufficient evidence always uses severity 0, without a performance band. No `WARNING` or unsupported-skill findings are manufactured. Count/coverage/hand-label thresholds and status bands are engineering defaults only; none represents expert-validated acceptable UgSL variation.
+
+### Results, failures, and traceability
+
+`COMPLETED` has a similarity score, separate evidence confidence, and one MOVEMENT finding whose evidence reports measured mean DTW distance, aligned-pair count, and the provisional threshold. It never invents directional claims. Finding start/end enclose actual usable learner observations (floor first timestamp, ceil last timestamp to satisfy M2 integer milliseconds).
+
+`UNANALYZABLE` has no score and a typed reason distinguishing absent correspondence, insufficient reference evidence, insufficient learner evidence, or both. If an actual learner evidence interval exists, emit one severity-0 `INSUFFICIENT_EVIDENCE` finding with no fabricated evidence; otherwise emit no findings/timestamps.
+
+`FAILED` represents only known processing failures: alignment resource-budget exhaustion or non-finite numerical computation. Score/confidence are null and findings empty. Invalid caller/configuration data raises typed validation/input errors; unexpected programming exceptions propagate rather than becoming learner findings. Technical reason codes remain in the internal outcome, not a new M2 error payload.
+
+The outcome retains request/reference identifiers, policy and lightweight M3 metadata contexts, both trajectories with gaps, eligibility, metrics linked by finding ID, and the alignment's sequence/frame indices and local distances. This traces findings back to actual source observations without putting arrays in evidence strings or duplicating full ExtractionResults.
+
+No learner/reference recordings or datasets are bundled or downloaded. Tests use typed synthetic M3 observations, including actual M3 normalization for translation/scale checks. Comparison performs no persistence, raw-array logging, network access, public API exposure, or coaching.
