@@ -23,9 +23,12 @@ Thumbs.db
 local-data/
 extracted-frames/
 *.task
+!src/ugsl_ai_coach/assets/*.task
 *.tflite
 *.mp4
 *.avi
 *.mov
 *.mkv
 *.webm
+.codex-db-env.sh
+.local-test-*/

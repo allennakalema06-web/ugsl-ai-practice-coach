@@ -30,13 +30,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
+    settings = settings if settings is not None else Settings()
+    docs = settings.api_docs_enabled if settings.api_docs_enabled is not None else settings.environment != 'production'
     app = FastAPI(
         title="UgSL AI Practice Coach",
         version="0.1.0",
         description="Service foundation for future evidence-based UgSL practice coaching.",
         lifespan=lifespan,
+        docs_url='/docs' if docs else None,
+        redoc_url='/redoc' if docs else None,
+        openapi_url='/openapi.json' if docs else None,
     )
-    app.state.settings = settings if settings is not None else Settings()
+    app.state.settings = settings
     app.state.metrics = Metrics()
     app.include_router(health_router, prefix="/api/v1")
     app.include_router(contracts_router, prefix="/api/v1")

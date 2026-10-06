@@ -1,0 +1,87 @@
+# M6F engineering target. Review before first sync; never auto-deploy on push.
+services:
+  - type: web
+    name: ugsl-ai-coach-api
+    runtime: docker
+    region: frankfurt
+    plan: 0.5c-512mb
+    numInstances: 1
+    autoDeployTrigger: "off"
+    dockerfilePath: ./Dockerfile
+    dockerCommand: python -m ugsl_ai_coach.deployment api
+    preDeployCommand: python -m ugsl_ai_coach.deployment migrate
+    healthCheckPath: /api/v1/health
+    maxShutdownDelaySeconds: 60
+    envVars:
+      - key: UGSL_ENVIRONMENT
+        value: production
+      - key: UGSL_API_DOCS_ENABLED
+        value: "false"
+      - key: UGSL_DATABASE_URL
+        fromDatabase:
+          name: ugsl-ai-coach-db
+          property: connectionString
+      - key: UGSL_SERVICE_TOKEN
+        sync: false
+      - key: UGSL_OBJECT_STORE_BUCKET
+        sync: false
+      - key: UGSL_OBJECT_STORE_REGION
+        sync: false
+      - key: UGSL_OBJECT_STORE_ENDPOINT_URL
+        sync: false
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false
+  - type: worker
+    name: ugsl-ai-coach-analysis-worker
+    runtime: docker
+    region: frankfurt
+    plan: 0.5c-512mb
+    numInstances: 1
+    autoDeployTrigger: "off"
+    dockerfilePath: ./Dockerfile
+    dockerCommand: python -m ugsl_ai_coach.deployment analysis-worker
+    preDeployCommand: python -m ugsl_ai_coach.deployment migrate
+    maxShutdownDelaySeconds: 300
+    envVars:
+      - key: UGSL_ENVIRONMENT
+        value: production
+      - key: UGSL_DATABASE_URL
+        fromDatabase:
+          name: ugsl-ai-coach-db
+          property: connectionString
+      - key: UGSL_OBJECT_STORE_BUCKET
+        sync: false
+      - key: UGSL_OBJECT_STORE_REGION
+        sync: false
+      - key: UGSL_OBJECT_STORE_ENDPOINT_URL
+        sync: false
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false
+  - type: worker
+    name: ugsl-ai-coach-coaching-worker
+    runtime: docker
+    region: frankfurt
+    plan: 0.5c-512mb
+    numInstances: 1
+    autoDeployTrigger: "off"
+    dockerfilePath: ./Dockerfile
+    dockerCommand: python -m ugsl_ai_coach.deployment coaching-worker
+    preDeployCommand: python -m ugsl_ai_coach.deployment migrate
+    maxShutdownDelaySeconds: 300
+    envVars:
+      - key: UGSL_ENVIRONMENT
+        value: production
+      - key: UGSL_DATABASE_URL
+        fromDatabase:
+          name: ugsl-ai-coach-db
+          property: connectionString
+databases:
+  - name: ugsl-ai-coach-db
+    region: frankfurt
+    plan: 0.1c-256mb
+    postgresMajorVersion: "18"
+    ipAllowList: []

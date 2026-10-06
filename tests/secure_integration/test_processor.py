@@ -224,7 +224,8 @@ def test_production_factory_and_actual_local_mediapipe(composition, settings, sy
     models = Path(__file__).resolve().parents[2] / ".models"
     hand, pose = models / "hand_landmarker.task", models / "pose_landmarker_lite.task"
     if not hand.is_file() or not pose.is_file():
-        pytest.skip("Optional integration smoke requires documented local .models assets")
+        from ugsl_ai_coach.assets import model_paths
+        hand, pose = model_paths()
     from ugsl_ai_coach.worker.processor import create_production_processor
     import ugsl_ai_coach.infrastructure.object_store.s3 as module
     prior, work, profile, objects, paths, _, _ = composition

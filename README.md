@@ -118,7 +118,7 @@ SHA256 of the tested version-1 assets:
 - `hand_landmarker.task`: `fbc2a30080c3c557093b5ddfc334698132eb341044ccee322ccf8bcf3607cde1`
 - `pose_landmarker_lite.task`: `59929e1d1ee95287735ddd833b19cf4ac46d29bc7afddbbf6753c459690d574a`
 
-Assets are ignored and not bundled. Custom asset paths can be supplied to the extractor; model upgrades require deliberate verification. See Google's [Hand Tasks guide](https://developers.google.com/edge/mediapipe/solutions/vision/hand_landmarker/python) and [Pose Tasks guide](https://developers.google.com/edge/mediapipe/solutions/vision/pose_landmarker/python).
+M6F packages these exact version-1 assets under `ugsl_ai_coach.assets`, with checksums, provenance and Apache 2.0 license notices. The development `.models/` directory remains ignored. Production deployment commands default to the packaged assets; explicit custom paths remain supported and require matching reference-profile model hashes. Model upgrades require deliberate verification. See Google's [Hand Tasks guide](https://developers.google.com/edge/mediapipe/solutions/vision/hand_landmarker/python) and [Pose Tasks guide](https://developers.google.com/edge/mediapipe/solutions/vision/pose_landmarker/python).
 
 Example internal use (provide your own local video; no automatic persistence):
 
@@ -551,3 +551,20 @@ Real PostgreSQL tests are a release gate before commit. Set
 `UGSL_TEST_DATABASE_URL` privately and run the full suite; each database test
 uses a disposable owned schema. Without that setting, tests skip explicitly:
 offline tests do not prove PostgreSQL transaction/concurrency behavior.
+
+## M6F deployment package
+
+The deployment target is Render, an M6F engineering choice. The reviewed Blueprint
+prepares one API, one analysis worker, one coaching worker and managed PostgreSQL,
+with external private S3-compatible storage. Automatic deployment is disabled.
+See [the deployment and live verification runbook](ops/deployment.md) for runtime
+commands, configuration, staged rollout, operator-only E2E, recovery and rollback.
+
+The same Python 3.13 Docker image runs all three processes under a non-root user.
+Exact M3 version-1 models are packaged and hash-verified after wheel installation.
+GitHub Actions gates the complete suite on PostgreSQL 18, then wheel and image
+checks. Local tests do not execute the live E2E tool or create cloud resources.
+
+M6F deployment package ready for review. Live deployment and end-to-end verification
+remain the final release gate; this repository preparation does not claim a deployed
+or production-verified system.

@@ -13,6 +13,7 @@ class Settings(BaseSettings):
 
     service_name: str = Field(default="ugsl-ai-practice-coach", min_length=1)
     environment: str = Field(default="development", min_length=1)
+    api_docs_enabled: bool | None = None
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
     database_url: SecretStr | None = Field(default=None, repr=False)
     worker_lease_seconds: int = Field(default=300, ge=1, le=86400)

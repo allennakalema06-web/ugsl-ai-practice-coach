@@ -13,7 +13,8 @@ def test_local_mediapipe_initialization_and_blank_frame():
     hand = models / "hand_landmarker.task"
     pose = models / "pose_landmarker_lite.task"
     if not hand.is_file() or not pose.is_file():
-        pytest.skip("Optional integration smoke requires documented local .models assets")
+        from ugsl_ai_coach.assets import model_paths
+        hand, pose = model_paths()
     with MediaPipeExtractor(hand, pose) as extractor:
         blank = np.zeros((64, 64, 3), dtype=np.uint8)
         raw = extractor.extract(DecodedFrame(0, 0, blank))
