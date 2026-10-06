@@ -6,15 +6,19 @@ from ugsl_ai_coach.domain.analysis import AnalysisId
 from ugsl_ai_coach.integration.models import AnalysisJob, CoachingRecord, JobAcceptance
 
 
-class AnalysisJobRepository(Protocol):
+class AnalysisJobReader(Protocol):
+    """Read-only analysis access, also usable by separate coaching persistence."""
+
+    def get(self, analysis_id: AnalysisId) -> AnalysisJob | None: ...
+
+
+class AnalysisJobRepository(AnalysisJobReader, Protocol):
     """Future adapters own durable uniqueness and concurrency enforcement.
 
     Idempotency keys are unique in the adapter's configured namespace. Backend
     authentication/authorization and any tenancy scoping are later integration
     concerns; callers cannot infer access permission from possession of an ID.
     """
-
-    def get(self, analysis_id: AnalysisId) -> AnalysisJob | None: ...
 
     def get_by_idempotency_key(self, key: str) -> AnalysisJob | None: ...
 

@@ -9,10 +9,10 @@ from ugsl_ai_coach.domain.analysis import AnalysisId, StructuredAnalysisResult
 from ugsl_ai_coach.integration.errors import AdapterContractError, AnalysisNotTerminal, IdempotencyConflict, JobNotFound
 from ugsl_ai_coach.integration.lifecycle import transition_job
 from ugsl_ai_coach.integration.models import AnalysisJob, AnalysisSubmission, CoachingRecord, JobAcceptance, JobState
-from ugsl_ai_coach.integration.ports import AnalysisDispatcher, AnalysisIdFactory, AnalysisJobRepository, CoachingRecordRepository
+from ugsl_ai_coach.integration.ports import AnalysisDispatcher, AnalysisIdFactory, AnalysisJobReader, AnalysisJobRepository, CoachingRecordRepository
 
 
-def _get_job(repository: AnalysisJobRepository, analysis_id: AnalysisId) -> AnalysisJob:
+def _get_job(repository: AnalysisJobReader, analysis_id: AnalysisId) -> AnalysisJob:
     analysis_id = TypeAdapter(AnalysisId).validate_python(analysis_id)
     job = repository.get(analysis_id)
     if job is None:
@@ -24,6 +24,8 @@ def _get_job(repository: AnalysisJobRepository, analysis_id: AnalysisId) -> Anal
 
 
 class AnalysisIntegrationService:
+    """M6A compatibility coordinator; use handoff.service for M6B acceptance guarantees."""
+
     def __init__(
         self, repository: AnalysisJobRepository, dispatcher: AnalysisDispatcher,
         id_factory: AnalysisIdFactory,
@@ -91,7 +93,7 @@ class CoachingIntegrationService:
     """Validate existing M5 output and append it after immutable analysis persistence."""
 
     def __init__(
-        self, jobs: AnalysisJobRepository, records: CoachingRecordRepository,
+        self, jobs: AnalysisJobReader, records: CoachingRecordRepository,
     ) -> None:
         self.jobs = jobs
         self.records = records

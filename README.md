@@ -14,7 +14,7 @@ Milestone 4 adds internal reference comparison of normalized wrist movement path
 
 Milestone 5 adds internal evidence-grounded Behavior-Aware Interface (BAI) coaching with an offline deterministic provider. It explains M2 findings using validated, accessible text and annotation metadata. No public coaching endpoint, live LLM, or TTS is implemented.
 
-Milestone 6A adds a transport-independent backend integration contract, immutable job snapshots, lifecycle coordination and technology-neutral ports. Concrete integration infrastructure and M6B+ remain future work.
+Milestone 6A adds a transport-independent backend integration contract, immutable job snapshots, lifecycle coordination and technology-neutral ports. Milestone 6B adds atomic job/work acceptance, lease-based recovery and atomic analysis/work completion semantics. Concrete infrastructure and M6C+ remain future work.
 
 ## Architecture principles
 
@@ -165,7 +165,7 @@ MediaPipe processes input on device. Its [upstream privacy notice](https://pypi.
 
 ## Future milestones
 
-Future work requires expert UgSL data and calibration, deliberate coverage of unsupported linguistic dimensions, and separately designed persistence/backend/frontend integration. M6A defines contracts only; M6B+ has not been started.
+Future work requires expert UgSL data and calibration, deliberate coverage of unsupported linguistic dimensions, and separately designed persistence/backend/frontend integration. M6A/M6B define integration and durability contracts; M6C+ has not been started.
 
 ## M4 reference comparison
 
@@ -318,3 +318,28 @@ Persistence and dispatch are separate ports: M6A does **not** guarantee durable 
 States describe the system, not learner quality: processing provides no performance conclusion, `UNANALYZABLE` means insufficient evidence, and `FAILED` means the analysis system could not complete. M6A adds no learner-facing copy, coercion, grades or progress percentages. M5 remains responsible for complete text/visual feedback and equivalent optional audio.
 
 M6A adds no mounted HTTP endpoint, media I/O/persistence/logging, raw frames/landmarks/DTW arrays, credentials, production infrastructure, LLM, TTS or frontend behavior. Tests use synthetic references and injected adapters; M1–M5 remain unchanged.
+
+### M6B durable work handoff and persistence semantics
+
+These M6 engineering decisions extend the persisted-evidence pipeline without selecting a database, queue or deployment provider. `integration/handoff/` is the M6B entry point. The M6A `AnalysisIntegrationService` remains a compatibility coordinator for its earlier contract; its separate accept/dispatch path does **not** provide M6B guarantees and must not be used for durable M6B submission. Neither service or test adapter is wired into application startup.
+
+`AnalysisHandoffService.submit` makes one `AnalysisPersistence.accept` call committing an `AnalysisJob(SUBMITTED)` and `AnalysisWorkItem(PENDING)` together. No two independent application writes and no immediate dispatch call are required. A successfully accepted new submission must have its recoverable work record; job-only acceptance is not part of this port. Production adapters must make the commit durable across process restart. Same idempotency key plus canonical payload returns the existing job/work pair at any stage; conflicting payload or colliding analysis IDs are rejected without rewriting history.
+
+```text
+backend submission -> atomic job + pending-work commit
+  -> future worker claim_next -> begin -> PROCESSING
+  -> existing M2 result -> atomic terminal-job + completed-work commit
+  -> later, separate immutable CoachingRecord
+```
+
+Work delivery state is separate from analysis state: `PENDING -> CLAIMED -> COMPLETED`. An expired `CLAIMED` item is directly reclaimed into a new `CLAIMED` generation, without changing analysis state or IDs. Work has only analysis/attempt IDs, opaque video/reference values, state, `delivery_count`, `claimed_at_ms` and `lease_expires_at_ms`. It contains no M2 result, score, coaching, raw media or learner PII. Pair validation requires matching identities/references and terminal analysis if and only if work is completed. Invalid/missing paired repository state is rejected, not repaired.
+
+All time values are explicit strict non-negative UTC epoch milliseconds; lease durations are strict positive integers. Tests inject values without sleeping. Future adapters must provide trusted authoritative time shared by workers, not accept untrusted client clocks. A lease is active during `claimed_at_ms <= now_ms < lease_expires_at_ms`; at expiry it can be recovered. Claiming must be atomic so only one active delivery exists. Every claim/reclaim increments `delivery_count`, which also fences stale workers: begin and finish must match the complete current claim and an unexpired lease inside the persistence transaction. This count measures infrastructure deliveries, **not learner retries, practice attempts or learner failures**.
+
+Beginning a claimed job changes `SUBMITTED -> PROCESSING`; reclaim of already-processing work resumes the same job without rewriting its lifecycle. Expiry/recovery never returns the job to SUBMITTED or creates a terminal outcome. Worker crashes and optional wakeup/dispatch failures retain recoverable work and must not synthesize M2 `FAILED`. Analysis `FAILED` is a valid terminal result only when supplied by the analysis pipeline, and closes work just like COMPLETED or UNANALYZABLE.
+
+Finalization atomically preserves the supplied matching M2 result and marks work COMPLETED. Lease fields are cleared while delivery count remains. Completed work is never reopened; repeated or stale completion attempts are rejected. If acknowledgement is lost after commit, callers can inspect the terminal job/work pair rather than rewrite evidence. Execution may repeat after lease expiry; this is recoverable delivery, not a guarantee of exactly-once external execution. Lease renewal, scheduling fairness, retry limits and operational recovery policy are deliberately not implemented. Long-running work whose lease expires must be reclaimed before finalization; adapters must prevent clock regressions from granting invalid ownership.
+
+`AnalysisPersistence` exposes only checked reads, atomic accept, claim, begin and finish. Its `AnalysisJobReader` view lets the unchanged coaching service validate later feedback against terminal evidence. Coaching remains separately append-only; no job/work mutation or coaching generation is introduced. The fake persistence adapter lives under `tests/integration_handoff/`, is sequential/non-production and **not durable**. JSON snapshots simulate committed-state restart solely to test the contract, including crashes before worker delivery, lease expiry and acknowledgement loss. It is never installed or registered at startup.
+
+The pending-work representation closes M6A's logical acceptance/dispatch gap; actual durable storage and production recovery require a later persistence adapter satisfying these atomic obligations. No concrete DB, queue, object storage, auth mechanism, network worker, media I/O, HTTP endpoint, LLM, TTS or dependency is added. The full M1–M6A suite remains unchanged and must continue to pass.
