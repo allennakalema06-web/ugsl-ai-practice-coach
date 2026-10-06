@@ -17,7 +17,7 @@ from ugsl_ai_coach.media.references import InvalidMediaReference, MediaReference
 from ugsl_ai_coach.main import create_app
 from integration_handoff.fakes import FakePersistence, FakeIdFactory
 from .conftest import SYNTHETIC_TOKEN
-from .test_api import Records
+from .test_api import Records, AllowedLimiter
 from .test_processor import composition
 
 
@@ -64,6 +64,7 @@ def pinned_wiring(settings, submission):
         service = AnalysisApiService(AnalysisHandoffService(persistence, FakeIdFactory()), Records(),
                                      MediaReferencePolicy(settings), lambda: store)
         app = create_app(settings)
+        app.state.rate_limiter = AllowedLimiter()
         app.state.analysis_api_service = service
         client = TestClient(app)
         client.headers["Authorization"] = "Bearer " + SYNTHETIC_TOKEN

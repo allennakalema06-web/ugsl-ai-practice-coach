@@ -73,12 +73,12 @@ def test_processor_exception_keeps_processing_and_no_failed_result(make_pair, ca
     assert store.pair.work.state == "CLAIMED"
     assert store.pair.job.structured_analysis is None and store.finished == []
     failure = caplog.records[-1]
-    assert failure.analysis_id == "AN-000001" and failure.error_type == "RuntimeError"
+    assert failure.analysis_id == "AN-000001" and failure.error_code == "ANALYSIS_PROCESSING_ERROR"
     assert "synthetic-sensitive-ref" not in caplog.text
     assert "synthetic-video" not in caplog.text
     structured = json.loads(JsonFormatter().format(failure))
-    assert structured["analysis_id"] == "AN-000001" and structured["error_type"] == "RuntimeError"
-    assert structured["event"] == "worker_iteration_failed"
+    assert structured["analysis_id"] == "AN-000001" and structured["error_code"] == "ANALYSIS_PROCESSING_ERROR"
+    assert structured["event"] == "analysis_processing_failed"
     assert "synthetic-sensitive-ref" not in json.dumps(structured)
 
 
@@ -159,7 +159,7 @@ def test_loop_waits_and_recovers_after_each_iteration(exception, caplog):
     runtime.run()
     assert store.calls == 3 and runtime.stop.waits == [1.0, 1.0, 1.0]
     if exception:
-        assert any(getattr(record, "event", None) == "worker_iteration_failed" for record in caplog.records)
+        assert any(getattr(record, "event", None) == "analysis_processing_failed" for record in caplog.records)
         assert "secret" not in caplog.text
 
 

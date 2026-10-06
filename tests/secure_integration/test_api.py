@@ -35,6 +35,7 @@ def wiring(settings):
     persistence, records = FakePersistence(), Records()
     handoff = AnalysisHandoffService(persistence, FakeIdFactory())
     app = create_app(settings)
+    app.state.rate_limiter = AllowedLimiter()
     app.state.analysis_api_service = AnalysisApiService(handoff, records, MediaReferencePolicy(settings), lambda: Resolver())
     client = TestClient(app, raise_server_exceptions=False)
     client.headers["Authorization"] = "Bearer " + SYNTHETIC_TOKEN
@@ -232,3 +233,9 @@ class Resolver:
     def pin_reference(self, key):
         from ugsl_ai_coach.media.pinned import PinnedObject
         return PinnedObject(kind="reference", key=key, version_id="synthetic-version").encode()
+
+
+class AllowedLimiter:
+    def check(self, *args):
+        from ugsl_ai_coach.infrastructure.postgres.rate_limit import RateDecision
+        return RateDecision(True, 1)

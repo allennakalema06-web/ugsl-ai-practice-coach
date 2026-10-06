@@ -16,6 +16,7 @@ class Scope(StrEnum):
     SUBMIT = "analysis:submit"
     READ = "analysis:read"
     FEEDBACK = "feedback:read"
+    METRICS = "metrics:read"
 
 
 @dataclass(frozen=True)
@@ -83,4 +84,18 @@ def require_service(
     principal = get_authenticator(request).authenticate(credentials.credentials)
     authorizer: ServiceAuthorizer = getattr(request.app.state, "authorizer", None) or ScopeAuthorizer()
     authorizer.authorize(principal, security_scopes.scopes)
+    if any(scope in security_scopes.scopes for scope in (Scope.SUBMIT, Scope.READ, Scope.FEEDBACK)):
+        from ugsl_ai_coach.infrastructure.postgres.connection import connection_factory
+        from ugsl_ai_coach.infrastructure.postgres.rate_limit import PostgresRateLimiter, RateLimited
+        operation = "submit" if Scope.SUBMIT in security_scopes.scopes else "read"
+        settings = request.app.state.settings
+        limiter = getattr(request.app.state, "rate_limiter", None)
+        if limiter is None:
+            limiter = PostgresRateLimiter(connection_factory(settings))
+        threshold = settings.submit_rate_limit_per_minute if operation == "submit" else settings.read_rate_limit_per_minute
+        decision = limiter.check(principal.identity, operation, threshold)
+        if not decision.allowed:
+            from ugsl_ai_coach.operations.metrics import best_effort
+            best_effort(lambda: request.app.state.metrics.rate.labels(operation).inc())
+            raise RateLimited(decision.retry_after)
     return principal

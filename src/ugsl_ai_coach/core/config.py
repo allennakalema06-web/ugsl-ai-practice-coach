@@ -2,7 +2,7 @@
 
 from typing import Literal
 
-from pydantic import Field, SecretStr
+from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -27,3 +27,16 @@ class Settings(BaseSettings):
     max_reference_bytes: int = Field(default=5 * 1024 * 1024, ge=1, le=50 * 1024 * 1024)
     hand_model_path: str | None = None
     pose_model_path: str | None = None
+    coaching_lease_seconds: int = Field(default=300, ge=1, le=86400)
+    coaching_poll_seconds: float = Field(default=1.0, ge=0.05, le=60, allow_inf_nan=False)
+    coaching_retry_base_seconds: int = Field(default=5, ge=1, le=86400)
+    coaching_retry_max_seconds: int = Field(default=300, ge=1, le=86400)
+    submit_rate_limit_per_minute: int = Field(default=60, ge=1, le=1000000)
+    read_rate_limit_per_minute: int = Field(default=600, ge=1, le=1000000)
+    temp_media_max_age_seconds: int = Field(default=86400, ge=3600, le=604800)
+
+    @model_validator(mode="after")
+    def retry_bounds(self):
+        if self.coaching_retry_max_seconds < self.coaching_retry_base_seconds:
+            raise ValueError("Coaching retry maximum must be at least the base")
+        return self

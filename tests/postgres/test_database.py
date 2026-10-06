@@ -46,11 +46,11 @@ def record(result, identity="synthetic-feedback"):
 
 
 def test_empty_database_migration_and_rerun(db):
-    assert migrate(db) == ("001_initial_integration.sql",)
+    assert migrate(db) == ("001_initial_integration.sql", "002_operational_hardening.sql")
     assert migrate(db) == ()
     with db() as conn:
-        assert conn.execute("SELECT count(*) AS n FROM schema_migrations").fetchone()["n"] == 1
-        for table in ("analysis_jobs", "analysis_work", "coaching_records"):
+        assert conn.execute("SELECT count(*) AS n FROM schema_migrations").fetchone()["n"] == 2
+        for table in ("analysis_jobs", "analysis_work", "coaching_records", "coaching_work", "service_rate_limits", "operational_worker_counts"):
             assert conn.execute("SELECT to_regclass(%s) AS name", (table,)).fetchone()["name"]
 
 

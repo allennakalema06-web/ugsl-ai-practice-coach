@@ -70,13 +70,15 @@ def test_only_authorized_mounted_http_endpoints():
         # M6D explicitly authorizes only these service-authenticated operations.
         "/api/v1/analyses", "/api/v1/analyses/{analysis_id}",
         "/api/v1/analyses/{analysis_id}/feedback",
+        # Deliberate M6E technical operations only, no manual coaching/admin route.
+        "/api/v1/health/ready", "/metrics",
     }
 
 
 def test_integration_source_does_not_process_media_generate_feedback_or_choose_infrastructure():
     import ugsl_ai_coach.integration as integration
     root = Path(integration.__file__).parent
-    allowed = {"enum", "typing", "pydantic", "ugsl_ai_coach.integration", "ugsl_ai_coach.domain.analysis",
+    allowed = {"datetime", "enum", "typing", "pydantic", "ugsl_ai_coach.integration", "ugsl_ai_coach.domain.analysis",
                "ugsl_ai_coach.coaching.models", "ugsl_ai_coach.coaching.grounding", "ugsl_ai_coach.coaching.validation"}
     for source in root.rglob("*.py"):
         tree = ast.parse(source.read_text(encoding="utf-8"))

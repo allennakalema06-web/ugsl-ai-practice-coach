@@ -12,6 +12,9 @@ from ugsl_ai_coach.api.routes.analyses import router as analyses_router
 from ugsl_ai_coach.api.errors import install_error_handlers
 from ugsl_ai_coach.core.config import Settings
 from ugsl_ai_coach.core.logging import configure_logging
+from ugsl_ai_coach.api.routes.operations import router as operations_router
+from ugsl_ai_coach.operations.metrics import Metrics
+from ugsl_ai_coach.operations.http import install_operations
 
 logger = logging.getLogger(__name__)
 
@@ -34,10 +37,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         lifespan=lifespan,
     )
     app.state.settings = settings if settings is not None else Settings()
+    app.state.metrics = Metrics()
     app.include_router(health_router, prefix="/api/v1")
     app.include_router(contracts_router, prefix="/api/v1")
     app.include_router(analyses_router, prefix="/api/v1")
+    app.include_router(operations_router)
     install_error_handlers(app)
+    install_operations(app)
     return app
 
 

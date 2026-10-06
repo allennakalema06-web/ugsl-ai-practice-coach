@@ -1,7 +1,6 @@
 """Private media -> unchanged M3 extraction -> shared M4 comparison -> M2."""
 
 from hashlib import sha256
-import logging
 from pathlib import Path
 from collections.abc import Callable
 from contextlib import AbstractContextManager
@@ -72,9 +71,9 @@ def main():
         settings = Settings()
         connection_factory(settings)  # validate DB configuration before S3/model composition
         run_postgres_worker(create_production_processor(settings), settings)
-    except Exception as error:
-        logging.getLogger(__name__).error("Production worker startup failed", extra={
-            "event": "worker_startup_failed", "error_type": type(error).__name__})
+    except Exception:
+        from ugsl_ai_coach.operations.events import emit
+        emit('worker_startup_failed', worker_type='analysis', error_code='STARTUP_UNAVAILABLE')
         raise SystemExit(1) from None
 
 

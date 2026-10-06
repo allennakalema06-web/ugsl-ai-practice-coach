@@ -408,3 +408,146 @@ Production extractor identity includes the pinned MediaPipe package version and 
 Clients and configuration initialize only during explicit protected operations or worker composition; importing the app makes no PostgreSQL/S3 connection. No database schema change is needed and migration 001 is untouched. Both learner and expert-profile versions are bound before acceptance, including across retries and worker restarts. Versioned storage retrieves the historical version even after replacement; unversioned storage safely refuses changed ETags. Historical-object retention remains a separate platform policy; pinning does not guarantee that a deleted version stays available.
 
 M5 remains a separate durable artifact. Feedback GET returns only an existing, source-grounded coaching record; no lazy generation occurs. **Durable automatic M5 generation/recovery remains a gap**, as do learner media/evidence privacy and retention policy, rate limiting, production monitoring/metrics/alerts, audit requirements, deployment/container/process supervision and deployed end-to-end verification. These remain M6E/M6F work. No learner login, frontend, upload workflow, public storage, notifications, WebSockets/SSE, broker, LLM/TTS or deployment provider is added.
+## M6E operational hardening
+
+M6E engineering decisions add reliable downstream delivery and technical
+operations. They do not define learner policy, product analytics, product audit
+requirements, or a deployment platform.
+
+```text
+terminal M2 result (COMPLETED / UNANALYZABLE / legitimate FAILED)
+    -> durable PENDING coaching work
+    -> fenced claim -> existing M5 grounding / deterministic provider / validation
+    -> immutable CoachingRecord + COMPLETED coaching work
+```
+
+Apply the ordered migrations explicitly before starting M6E runtimes:
+
+```powershell
+.venv\Scripts\python.exe -m ugsl_ai_coach.infrastructure.postgres.migrate
+.venv\Scripts\python.exe -m ugsl_ai_coach.worker.processor
+.venv\Scripts\python.exe -m ugsl_ai_coach.worker.coaching
+```
+
+Migration `001` is unchanged. `002_operational_hardening.sql` adds
+`coaching_work`, `service_rate_limits` and bounded `operational_worker_counts`.
+An analysis-terminal trigger creates coaching work in the same transaction as
+M6C finalization, including deferred integrity checks. A failure to schedule
+rolls back the new terminal result and analysis-work completion. Coaching
+itself runs in a later transaction; terminal analysis never implies feedback
+is already available. `GET /feedback` retains its existing pending response.
+
+The upgrade backfills terminal jobs without feedback as pending delivery. Jobs
+with existing feedback are completed and preserve that feedback identity.
+Checksum-tracked migration reruns do nothing. Historical evidence and feedback
+are never updated or deleted by M6E.
+
+New work reserves a stable `FB-<UUID>` string derived from the analysis ID using
+PostgreSQL's built-in MD5/UUID representation with an M6E namespace. This is a
+non-secret delivery identifier, not a cryptographic security primitive. It is
+persisted before the first provider call and reused on every retry. Existing
+M6A append remains supported: valid existing feedback is authoritative and
+completes its work atomically, even if an older caller chose another feedback
+ID. Workers reread committed feedback before calling the provider and never
+replace that history or weaken conflicting-feedback checks.
+
+Coaching states are only `PENDING`, `CLAIMED`, `COMPLETED`. PostgreSQL
+`clock_timestamp()` controls claims, lease expiry and retry eligibility.
+`FOR UPDATE SKIP LOCKED`, incrementing delivery generation and ownership checks
+fence concurrent/stale workers. Expired claims are recoverable. Active claims
+are excluded; completed work never reopens. A processing failure returns an
+active claim to pending with a durable exponential delay of 5, 10, 20 ... up to
+300 seconds by default. The only stored failure category is
+`COACHING_PROCESSING_ERROR`; exception text is never persisted. Retry timing
+has a bounded delay, not a product-defined maximum retry count. A database
+failure leaves lease recovery available.
+
+Validated feedback insertion and work completion share one transaction.
+Database triggers also reconcile existing M6A append operations. Lost
+acknowledgement is resolved by rereading committed feedback; no second provider
+call is needed when committed truth can be established. Provider, database,
+metrics and logging failures never create M2 `FAILED` or reopen terminal M2.
+The production M5 provider remains deterministic; **no external LLM vendor is
+configured or added**, and no new learner history/personalization context is
+collected. Future providers can use the existing M5 boundary.
+
+The coaching loop handles each job independently, waits a bounded interval
+after every iteration, and honors SIGINT/SIGTERM without starting new processing
+after shutdown is requested. Process supervision remains M6F.
+
+Authenticated internal services share PostgreSQL minute-window rate limits:
+60 submissions and 600 analysis/feedback reads per minute by default. These
+are M6E operational capacity/security defaults, adjustable through `UGSL_`
+settings, not learner/product policy. Buckets use the authenticated service
+principal's SHA-256 digest and operation class; no learner, attempt, media,
+request or IP identifier is used. Each trusted configured principal has at
+most two rolling rows; windows reset those rows rather than creating request
+history. The row lock serializes increment/check using database time and
+saturates rejection counts. Unavailable PostgreSQL fails closed with safe 503.
+Rejection precedes object resolution/CV, returns the existing error envelope
+with `RATE_LIMITED`, `retryable=true`, HTTP 429 and integer `Retry-After`.
+
+Each HTTP request gets a fresh random `X-Request-ID`; client-supplied values are
+not trusted. Structured operational events correlate requests using that ID
+and route templates, method, status and duration. Security events cover auth,
+authorization, conflicts, rate limits and storage identity violations. They
+exclude tokens, request bodies, object keys, findings, feedback, PII, client IP,
+credentials and exception text/tracebacks. Log sink failure is isolated. These
+events are technical security telemetry, **not a learner-activity/product audit
+trail**; DEC-019/product audit requirements remain unresolved. Infrastructure
+access-log redaction/configuration outside this application belongs to M6F.
+
+`GET /metrics` requires existing service auth with `metrics:read` scope. The
+static backend authenticator grants all defined service scopes; injected
+authenticators can narrow them. This endpoint is not in the submit/read buckets
+so monitoring remains available while those buckets are saturated. Metrics
+include HTTP counts/latency/status, rate rejections, claims/reclaims, worker
+success/failure/retry, PostgreSQL availability, queue depths, oldest eligible
+work age, terminal M2 counts and committed coaching count. Labels are bounded
+route templates, normalized HTTP methods/status, worker/outcome or terminal
+status; never analysis/attempt/feedback/request IDs, object keys or tokens.
+
+API HTTP counters are process-local and reset on restart; scrape each API
+instance and aggregate as appropriate. Independent production workers write
+best-effort bounded shared operational counts after processing/finalization,
+so worker telemetry is visible from the API metrics endpoint. These counts
+are operational observations, not exactly-once delivery evidence. Queue,
+terminal-analysis and coaching-completion gauges query durable database truth
+and remain meaningful after restart. A failed snapshot sets
+`ugsl_postgres_up=0`, clears stale queue/count samples and still serves metrics.
+Telemetry collection/recording failures do not change evidence or delivery.
+
+`GET /api/v1/health` remains lightweight liveness. M6E adds unauthenticated
+`GET /api/v1/health/ready`, returning only `ready` (200) or `not_ready` (503).
+This is an M6E engineering contract suitable for infrastructure probes. It
+validates API runtime auth/storage configuration and performs a simple
+PostgreSQL query. It never creates an S3 client, downloads media, requires a
+particular object or attempts worker model inference. It is not proof of full
+end-to-end storage/CV/provider health.
+
+Provider-neutral alerts live in `ops/prometheus/alerts.yml`, using the actual
+implemented metric names for DB unavailability, persistent 5xx, worker failures,
+stalled queues and rate-limit rejection volume. Thresholds are tunable M6E
+engineering defaults. Prometheus scraping, rule validation with `promtool`,
+alert delivery and supervision are M6F/operator responsibilities. No external
+monitoring SaaS, broker or notification service is added.
+
+Learner downloads use the service-owned `ugsl-ai-owned-media-v1` directory
+under the runtime user's OS temp directory, marked ownership, unpredictable
+`work-*` directories, neutral filenames and immediate context cleanup. Analysis
+worker startup explicitly cleans marked abandoned directories older than
+`UGSL_TEMP_MEDIA_MAX_AGE_SECONDS` (24 hours by default); import never cleans.
+Active file locks preserve even old downloads. Cleanup only handles the known
+flat service artifact set, rejects symlinks/reparse points and unexpected files,
+and never recursively deletes arbitrary temp directories or S3 objects.
+The runtime temp directory must remain private to its OS account.
+
+This crash-residue age is a technical local-artifact decision. **Behavioral-data
+retention, historical evidence/feedback retention, learner-media deletion and
+exact product monitoring/audit policies remain open product/security decisions.**
+M6E collects no clickstream, engagement, attention, IP history or device signals.
+
+Real PostgreSQL tests are a release gate before commit. Set
+`UGSL_TEST_DATABASE_URL` privately and run the full suite; each database test
+uses a disposable owned schema. Without that setting, tests skip explicitly:
+offline tests do not prove PostgreSQL transaction/concurrency behavior.

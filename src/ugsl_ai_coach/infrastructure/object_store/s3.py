@@ -3,7 +3,6 @@
 from contextlib import contextmanager
 from pathlib import Path
 import re
-from tempfile import TemporaryDirectory
 from urllib.parse import urlsplit
 
 from botocore.exceptions import BotoCoreError, ClientError
@@ -15,6 +14,7 @@ from ugsl_ai_coach.media.ports import (
 )
 from ugsl_ai_coach.media.references import MediaConfigurationError, MediaReferencePolicy
 from ugsl_ai_coach.media.pinned import PinnedObject, parse_pinned
+from ugsl_ai_coach.media.temporary import TemporaryMedia
 
 VIDEO_TYPES = {".mp4": "video/mp4", ".avi": "video/x-msvideo"}
 
@@ -81,6 +81,8 @@ class S3MediaStore:
     def _verify_identity(self, metadata, pinned):
         if ((pinned.version_id and metadata.get("VersionId") != pinned.version_id)
                 or (pinned.etag and metadata.get("ETag") != pinned.etag)):
+            from ugsl_ai_coach.operations.events import emit
+            emit('storage_identity_violation', error_code='OBJECT_IDENTITY_MISMATCH')
             raise ObjectStoreUnavailable("The accepted object identity is unavailable or changed")
 
     @contextmanager
@@ -128,7 +130,7 @@ class S3MediaStore:
         if suffix not in VIDEO_TYPES:
             raise UnsupportedLearnerVideo("Only MP4 or AVI video containers are accepted")
         with self._body(pinned, self.max_video_bytes, VIDEO_TYPES[suffix], LearnerMediaNotFound, UnsupportedLearnerVideo) as (body, length):
-            with TemporaryDirectory(prefix="ugsl-media-") as directory:
+            with TemporaryMedia().directory() as directory:
                 path = Path(directory) / ("input" + suffix)  # no caller filename/key in local path
                 with path.open("xb") as output:
                     self._copy(body, length, self.max_video_bytes, output.write)

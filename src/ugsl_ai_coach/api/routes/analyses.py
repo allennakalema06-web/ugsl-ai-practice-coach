@@ -11,7 +11,7 @@ from ugsl_ai_coach.domain.analysis import AnalysisId
 from ugsl_ai_coach.integration.models import AnalysisSubmission
 
 router = APIRouter(prefix="/analyses", tags=["internal analyses"], responses={
-    code: {"model": ErrorEnvelope} for code in (401, 403, 404, 409, 422, 500, 503)
+    code: {"model": ErrorEnvelope} for code in (401, 403, 404, 409, 422, 429, 500, 503)
 })
 
 

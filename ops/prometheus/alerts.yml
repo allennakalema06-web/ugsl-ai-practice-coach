@@ -1,0 +1,53 @@
+# M6E engineering defaults. Tune for capacity; alert routing/supervision is M6F.
+groups:
+  - name: ugsl_operational_hardening
+    rules:
+      - alert: UgslPostgresUnavailable
+        expr: ugsl_postgres_up == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: UgSL PostgreSQL snapshots are unavailable
+      - alert: UgslPersistentServerErrors
+        expr: sum(rate(ugsl_http_requests_total{status=~"5.."}[5m])) / clamp_min(sum(rate(ugsl_http_requests_total[5m])), 0.01) > 0.05
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: UgSL server errors exceed the operational threshold
+      - alert: UgslAnalysisWorkerFailures
+        expr: sum(increase(ugsl_durable_worker_events_total{worker="analysis",outcome="failure"}[10m])) > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: UgSL analysis worker failures are recurring
+      - alert: UgslCoachingWorkerFailures
+        expr: sum(increase(ugsl_durable_worker_events_total{worker="coaching",outcome="failure"}[10m])) > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: UgSL coaching worker failures are recurring
+      - alert: UgslAnalysisQueueStalled
+        expr: ugsl_oldest_eligible_work_age_seconds{worker="analysis"} > 900 and ugsl_queue_depth{worker="analysis"} > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: UgSL analysis work is waiting too long
+      - alert: UgslCoachingQueueStalled
+        expr: ugsl_oldest_eligible_work_age_seconds{worker="coaching"} > 900 and ugsl_queue_depth{worker="coaching"} > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: UgSL coaching work is waiting too long
+      - alert: UgslRateLimitRejections
+        expr: sum(rate(ugsl_rate_limit_rejections_total[5m])) > 1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: UgSL service rate-limit rejection volume is elevated

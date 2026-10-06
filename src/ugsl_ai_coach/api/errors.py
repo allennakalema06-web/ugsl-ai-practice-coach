@@ -1,7 +1,5 @@
 """Stable safe transport errors: never serialize upstream exception text."""
 
-import logging
-
 from fastapi import Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -16,11 +14,12 @@ from ugsl_ai_coach.media.ports import (
     UnsupportedLearnerVideo, MediaTooLarge, CorruptReferenceProfile, IncompatibleReferenceProfile,
 )
 from ugsl_ai_coach.media.references import InvalidMediaReference, MediaConfigurationError
-
-logger = logging.getLogger(__name__)
+from ugsl_ai_coach.infrastructure.postgres.rate_limit import RateLimited
+from ugsl_ai_coach.operations.events import emit
 
 # Type, status, stable code, calm message, retryability.
 ERRORS = (
+    (RateLimited, 429, "RATE_LIMITED", "Service request capacity is temporarily exceeded.", True),
     (AuthenticationFailed, 401, "AUTHENTICATION_FAILED", "Valid backend service credentials are required.", False),
     (AuthorizationFailed, 403, "AUTHORIZATION_FAILED", "The backend service lacks the required permission.", False),
     (RequestValidationError, 422, "VALIDATION_ERROR", "The request does not match the required contract.", False),
@@ -49,11 +48,13 @@ async def safe_error(request: Request, error: Exception):
         if isinstance(error, error_type):
             status, code, message, retryable = candidate_status, candidate_code, candidate_message, candidate_retryable
             break
-    if status >= 500:
-        logger.error("Internal API operation failed", extra={"event": code, "error_type": type(error).__name__})
+    events = {401: "authentication_failed", 403: "authorization_denied", 409: "idempotency_conflict", 429: "rate_limited"}
+    emit(events.get(status, code.lower()), error_code=code, status=status)
     envelope = ErrorEnvelope(error=ApiError(code=code, message=message, retryable=retryable))
-    return JSONResponse(status_code=status, content=envelope.model_dump(mode="json"),
-                        headers={"WWW-Authenticate": "Bearer"} if status == 401 else None)
+    headers = {"WWW-Authenticate": "Bearer"} if status == 401 else {}
+    if isinstance(error, RateLimited):
+        headers["Retry-After"] = str(error.retry_after)
+    return JSONResponse(status_code=status, content=envelope.model_dump(mode="json"), headers=headers)
 
 
 def install_error_handlers(app):
