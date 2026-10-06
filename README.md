@@ -12,7 +12,9 @@ Milestone 3 adds an internal video-to-movement-observations pipeline using OpenC
 
 Milestone 4 adds internal reference comparison of normalized wrist movement paths. It emits measured geometry, evidence sufficiency, and provisional MOVEMENT findings using the unchanged M2 contract. **Geometric similarity is not UgSL linguistic correctness.** No public comparison endpoint is implemented.
 
-Milestone 5 adds internal evidence-grounded Behavior-Aware Interface (BAI) coaching with an offline deterministic provider. It explains M2 findings using validated, accessible text and annotation metadata. No public coaching endpoint, live LLM, or TTS is implemented; M6 integration has not started.
+Milestone 5 adds internal evidence-grounded Behavior-Aware Interface (BAI) coaching with an offline deterministic provider. It explains M2 findings using validated, accessible text and annotation metadata. No public coaching endpoint, live LLM, or TTS is implemented.
+
+Milestone 6A adds a transport-independent backend integration contract, immutable job snapshots, lifecycle coordination and technology-neutral ports. Concrete integration infrastructure and M6B+ remain future work.
 
 ## Architecture principles
 
@@ -163,7 +165,7 @@ MediaPipe processes input on device. Its [upstream privacy notice](https://pypi.
 
 ## Future milestones
 
-Future work requires expert UgSL data and calibration, deliberate coverage of unsupported linguistic dimensions, and separately designed persistence/backend/frontend integration. M6 has not been started.
+Future work requires expert UgSL data and calibration, deliberate coverage of unsupported linguistic dimensions, and separately designed persistence/backend/frontend integration. M6A defines contracts only; M6B+ has not been started.
 
 ## M4 reference comparison
 
@@ -285,3 +287,34 @@ V1 deliberately uses a **closed authorized vocabulary**. Final validation revali
 A future LLM provider must obey these same constraints. Arbitrary paraphrases are intentionally rejected in v1: unrestricted language would require separately designed semantic validation and a versioned policy change, not merely schema compliance. The central constraints require evidence-only explanations, uncertainty, unchanged source attribution/severity/times, agency and respectful language. M5 never claims handshape, orientation, location, timing, sequence, movement range, body position, direction, grammar, meaning, facial/non-manual correctness or complete UgSL correctness. Engineering similarity is never presented as a grade, percentage, mastery, pass threshold or linguistic accuracy.
 
 Coaching tests use only typed M2 fixtures, including malicious provider output, incomplete evidence, every state, unsupported skills, source/annotation tampering, closed-language BAI rules and audio equivalence. A fresh-process test blocks network, CV/comparison, MediaPipe, external AI and TTS imports while exercising coaching. Existing M1–M4 tests remain unchanged. M5 retains data in memory only and adds no logging of learner evidence or persistence.
+
+## M6A Integration Contract
+
+These are **M6 integration engineering decisions**, not claims about an earlier external API specification. No core product/API source documents are bundled in this repository; this section records the implemented boundary.
+
+`integration/` provides frozen, extra-forbidding `AnalysisSubmission`, `AnalysisJob`, `JobAcceptance` and separate `CoachingRecord` models. A submission contains the existing M2 `attempt_id` plus strict, trimmed, non-empty opaque `learner_video_ref`, `reference_profile_ref` and `idempotency_key` strings. References are not interpreted as paths, URLs or storage-provider keys. Jobs retain these values and an M2-format `analysis_id`; terminal results reuse `StructuredAnalysisResult` directly. `CoachingRecord` contains an existing typed M5 `CoachingFeedback` with matching analysis/attempt identifiers.
+
+```text
+UgSL backend -> AnalysisIntegrationService.submit
+  -> atomic AnalysisJobRepository.accept -> AnalysisDispatcher
+future worker -> mark_processing -> complete(existing M2 result) -> immutable analysis evidence
+later M5 output -> CoachingIntegrationService.record_feedback -> separate append-only coaching record
+```
+
+`SUBMITTED` and `PROCESSING` are analysis integration states only. M2 terminal statuses are unchanged. The only transitions are `SUBMITTED -> PROCESSING -> COMPLETED | UNANALYZABLE | FAILED`. Non-terminal jobs contain no analysis result; coaching is never a job field. Terminal jobs require a matching M2 result; state, analysis ID and attempt ID must agree. `COMPLETED` means the analysis stage completed successfully, not that downstream coaching or presentation has finished. `UNANALYZABLE` and `FAILED` also remain analysis outcomes. The service validates supplied results; it does not execute M3/M4 or generate coaching.
+
+Terminal analysis snapshots cannot transition again, including same-state updates, result replacement or retries. Future retries create new jobs rather than rewrite earlier evidence. Frozen Python objects protect ordinary in-memory mutation; future adapters must enforce durable historical immutability. Analysis ID allocation is injected and preserves `AN-[0-9]{6,}`; no production ID algorithm is selected.
+
+Coaching can be persisted later without changing the terminal job or its StructuredAnalysisResult. `CoachingIntegrationService` reads existing terminal analysis evidence, verifies all analysis/attempt identifiers, and applies the unchanged M5 grounding/accessibility validator, including source findings, intervals, body regions, authorized claims and audio equivalence. It then appends a separate `CoachingRecord`; no provider is invoked and no evidence or lifecycle state is changed. Missing/non-terminal analysis rejects coaching persistence. No coaching lifecycle state is added.
+
+`CoachingRecordRepository` is a separate technology-neutral append-only port: one logical coaching artifact per analysis in M6A. Exactly identical writes, including feedback ID, metadata and optional audio representation, return the existing record without duplication. Conflicting output raises `FeedbackConflict` and never overwrites history. Future adapters must enforce atomicity for racing writes; test fakes are sequential and add no database locking. Versioned alternative coaching artifacts would require a later explicit contract decision.
+
+Idempotency compares the canonical trimmed submission. Same key plus same payload returns the existing job in its current state without duplicate work or redispatch. Same key plus changed attempt/video/profile raises `IdempotencyConflict`. `AnalysisJobRepository.accept` must atomically enforce this rule and analysis-ID uniqueness, including racing submissions. `compare_and_set` must atomically validate transitions and match the full expected snapshot, rejecting stale updates. Test-only deterministic fakes illustrate these obligations; no production repository is included.
+
+`AnalysisJobRepository`, `CoachingRecordRepository`, `AnalysisDispatcher` and `AnalysisIdFactory` are technology-neutral protocols. Database, queue, object storage, deployment and service-authentication providers remain undecided. Backend authentication/authorization remains authoritative; possessing an ID grants no access. Key namespace/tenant scoping belongs to later authorized adapter wiring.
+
+Persistence and dispatch are separate ports: M6A does **not** guarantee durable handoff or exactly-once worker execution. `SUBMITTED` does not guarantee successful dispatch. Dispatch errors propagate and may leave an accepted `SUBMITTED` job; repeating its submission returns that job rather than automatically dispatching again. Later M6 infrastructure wiring must resolve durable handoff/recovery and the acceptance/dispatch failure window before production use. No automatic retries or recovery infrastructure are implemented.
+
+States describe the system, not learner quality: processing provides no performance conclusion, `UNANALYZABLE` means insufficient evidence, and `FAILED` means the analysis system could not complete. M6A adds no learner-facing copy, coercion, grades or progress percentages. M5 remains responsible for complete text/visual feedback and equivalent optional audio.
+
+M6A adds no mounted HTTP endpoint, media I/O/persistence/logging, raw frames/landmarks/DTW arrays, credentials, production infrastructure, LLM, TTS or frontend behavior. Tests use synthetic references and injected adapters; M1–M5 remain unchanged.
