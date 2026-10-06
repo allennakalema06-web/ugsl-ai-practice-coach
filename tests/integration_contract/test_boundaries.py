@@ -62,11 +62,14 @@ def test_integration_does_not_loosen_m5_source_validation(submitted, field, valu
     assert not records.records
 
 
-def test_no_new_mounted_http_endpoint():
+def test_only_authorized_mounted_http_endpoints():
     from ugsl_ai_coach.main import create_app
     app = create_app()
     assert set(app.openapi()["paths"]) == {
         "/api/v1/health", "/api/v1/contracts/analysis",
+        # M6D explicitly authorizes only these service-authenticated operations.
+        "/api/v1/analyses", "/api/v1/analyses/{analysis_id}",
+        "/api/v1/analyses/{analysis_id}/feedback",
     }
 
 

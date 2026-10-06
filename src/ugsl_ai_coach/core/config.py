@@ -17,3 +17,13 @@ class Settings(BaseSettings):
     database_url: SecretStr | None = Field(default=None, repr=False)
     worker_lease_seconds: int = Field(default=300, ge=1, le=86400)
     worker_poll_seconds: float = Field(default=1.0, ge=0.05, le=60, allow_inf_nan=False)
+    service_token: SecretStr | None = Field(default=None, repr=False)
+    object_store_bucket: str | None = None
+    object_store_region: str | None = None
+    object_store_endpoint_url: str | None = None
+    learner_video_prefix: str = "learner-videos/"
+    reference_profile_prefix: str = "reference-profiles/"
+    max_video_bytes: int = Field(default=50 * 1024 * 1024, ge=1, le=1024 * 1024 * 1024)
+    max_reference_bytes: int = Field(default=5 * 1024 * 1024, ge=1, le=50 * 1024 * 1024)
+    hand_model_path: str | None = None
+    pose_model_path: str | None = None

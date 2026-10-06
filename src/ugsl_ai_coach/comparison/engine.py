@@ -45,9 +45,31 @@ def compare_movement(reference: ExtractionResult, learner: ExtractionResult,
     if not isinstance(request, ComparisonRequest) or (policy is not None and not isinstance(policy, ComparisonPolicy)):
         raise InvalidComparisonInput("Use validated ComparisonRequest and ComparisonPolicy inputs")
     policy = policy if policy is not None else ComparisonPolicy()
+    reference_context = ExtractionContext.from_extraction(reference)
+    ref = None if request.correspondence is None else select_trajectory(reference, request.correspondence.reference_label, policy)
+    return _compare_selected(ref, reference_context, learner, request, policy)
+
+
+def compare_precomputed_movement(reference: MovementTrajectory, reference_context: ExtractionContext,
+                                learner: ExtractionResult, request: ComparisonRequest,
+                                policy: ComparisonPolicy | None = None) -> ComparisonOutcome:
+    """Same M4 algorithm with an already-selected, validated expert trajectory."""
+    if not isinstance(reference, MovementTrajectory) or not isinstance(reference_context, ExtractionContext):
+        raise InvalidComparisonInput("Use typed precomputed reference trajectory and context")
+    if not isinstance(learner, ExtractionResult) or not isinstance(request, ComparisonRequest):
+        raise InvalidComparisonInput("Use typed learner extraction and comparison request")
+    if policy is not None and not isinstance(policy, ComparisonPolicy):
+        raise InvalidComparisonInput("Use a typed comparison policy")
+    reference = MovementTrajectory.model_validate(reference.model_dump(mode="python"))
+    reference_context = ExtractionContext.model_validate(reference_context.model_dump(mode="python"))
+    if request.correspondence is not None and reference.reported_label != request.correspondence.reference_label:
+        raise InvalidComparisonInput("Precomputed reference must match established correspondence")
+    return _compare_selected(reference, reference_context, learner, request, policy or ComparisonPolicy())
+
+
+def _compare_selected(ref, reference_context, learner, request, policy):
     version = f"{policy.algorithm_version}/{policy.policy_version}"
-    context = dict(reference_context=ExtractionContext.from_extraction(reference),
-                   learner_context=ExtractionContext.from_extraction(learner))
+    context = dict(reference_context=reference_context, learner_context=ExtractionContext.from_extraction(learner))
 
     def analysis(status, confidence=None, score=None, findings=()):
         return StructuredAnalysisResult(analysis_id=request.analysis_id, attempt_id=request.attempt_id,
@@ -57,7 +79,6 @@ def compare_movement(reference: ExtractionResult, learner: ExtractionResult,
     if request.correspondence is None:
         return ComparisonOutcome(analysis=analysis(AnalysisStatus.UNANALYZABLE, 0.0), request=request,
                                  policy=policy, reason=OutcomeReason.CORRESPONDENCE_UNESTABLISHED, **context)
-    ref = select_trajectory(reference, request.correspondence.reference_label, policy)
     learn = select_trajectory(learner, request.correspondence.learner_label, policy)
     eligibility = check_eligibility(ref, learn, policy)
     artifacts = dict(request=request, policy=policy, reference_trajectory=ref,
