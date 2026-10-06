@@ -6,6 +6,7 @@ from collections.abc import AsyncIterator
 
 from fastapi import FastAPI
 
+from ugsl_ai_coach.api.routes.contracts import router as contracts_router
 from ugsl_ai_coach.api.routes.health import router as health_router
 from ugsl_ai_coach.core.config import Settings
 from ugsl_ai_coach.core.logging import configure_logging
@@ -32,6 +33,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.state.settings = settings if settings is not None else Settings()
     app.include_router(health_router, prefix="/api/v1")
+    app.include_router(contracts_router, prefix="/api/v1")
     return app
 
 

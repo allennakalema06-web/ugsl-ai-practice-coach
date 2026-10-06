@@ -6,11 +6,33 @@ The Uganda Sign Language (UgSL) AI Practice Coach will eventually compare learne
 
 Milestone 1 provides a standalone Python service foundation: FastAPI application factory, versioned process health endpoint, typed environment settings, standard-library JSON application logging, and automated tests. **The current service does not analyze UgSL signs.** No AI, video processing, storage, authentication, or frontend is implemented.
 
+Milestone 2 adds Structured Findings Contract v1: validated Pydantic domain models and a generated JSON Schema endpoint. It defines what future analysis components may report; it produces no analysis results or feedback.
+
 ## Architecture principles
 
 The model is a component of the AI Coach, not the AI Coach itself. Future objective CV and comparison stages will produce structured findings; a later LLM layer may explain those findings and must not independently judge sign correctness from raw video. Insufficient confidence must lead to abstention. Previous learner attempts will eventually be immutable historical records.
 
-Requests currently flow through the FastAPI app in `src/ugsl_ai_coach/main.py` to the health router under `/api/v1`. Settings are loaded when the application is created and attached to that app. Logging is configured at startup, with startup/shutdown messages and DEBUG health messages. Application logs are JSON; Uvicorn retains its own server/access logging. `core/` contains configuration and logging, while `api/routes/` contains HTTP routes. Future domain, pipeline, comparison, coaching, and adapter modules will be added when needed.
+Requests currently flow through the FastAPI app in `src/ugsl_ai_coach/main.py` to health and contract routers under `/api/v1`. Settings are loaded when the application is created and attached to that app. Logging is configured at startup, with startup/shutdown messages and DEBUG health messages. Application logs are JSON; Uvicorn retains its own server/access logging. `core/` contains configuration and logging, `api/routes/` contains HTTP routes, and `domain/analysis.py` defines the authoritative contract. Future pipeline, comparison, coaching, and adapter modules will be added when needed.
+
+## Structured Findings Contract v1
+
+Structured Findings are the evidence-first boundary from future CV/comparison components to future coaching explanations. Identifiers trace an attempt (`ATT-` plus at least six digits), analysis (`AN-` plus at least six digits), and finding (`F-` plus at least three digits). `model_version` is trimmed and must be non-empty.
+
+| Analysis status | Meaning and validation |
+| --- | --- |
+| `COMPLETED` | Sufficient evidence; score and confidence required; zero or more findings |
+| `UNANALYZABLE` | Insufficient evidence, **not poor learner performance**; score absent/null, confidence required, only insufficient-evidence findings or none |
+| `FAILED` | Technical/processing failure; score absent/null, confidence optional, findings empty |
+
+Skills are exactly `HANDSHAPE`, `ORIENTATION`, `LOCATION`, `MOVEMENT`, `TIMING`, `SEQUENCE`, `MOVEMENT_RANGE`, and `BODY_POSITION`. Directional observations use `MOVEMENT` (for example expected `UPWARD`, observed `OUTWARD`); `DIRECTION` is invalid.
+
+Finding statuses are `STRONG`, `ACCEPTABLE`, `NEEDS_IMPROVEMENT`, `WARNING`, and `INSUFFICIENT_EVIDENCE`. All except `INSUFFICIENT_EVIDENCE` require evidence with readable expected/observed strings and a finite numeric deviation. Deviation has no universal range or interpretation in M2. Severity is an explicit integer from 0 (informational) through 3 (major), never inferred from status. Body regions are `LEFT_HAND`, `RIGHT_HAND`, `BOTH_HANDS`, `LEFT_ARM`, `RIGHT_ARM`, `HEAD`, and `UPPER_BODY`. Timestamps are non-negative integers with end >= start.
+
+Scores and confidence are finite values in [0, 1]; percentages such as 91 are rejected. The score is an internal calibrated similarity measure, not automatically a learner grade. NaN, infinities, unexpected fields, fractional timestamps/severity, and numeric strings are rejected. Missing or null evidence is permitted for insufficient-evidence findings without fabricated observations.
+
+Contract models are frozen, including nested evidence/findings; findings use an immutable tuple in Python and a JSON array on the wire. This protects validated objects from ordinary accidental mutation, **not database-level historical immutability**. No persistence exists. Construct contracts through normal Pydantic validation; unchecked construction/copy APIs are not a validation boundary.
+
+`GET http://127.0.0.1:8000/api/v1/contracts/analysis` returns JSON Schema generated directly from `StructuredAnalysisResult`. Field descriptions document conditional requirements; cross-field validators remain authoritative because generated JSON Schema does not encode those validators as conditional schema rules. There is no `/analyze` endpoint.
 
 ## Local setup (Windows PowerShell)
 
@@ -66,4 +88,4 @@ Tests use an in-process HTTP client and controlled settings. They need no extern
 
 ## Future milestones
 
-Later milestones will address video validation/frame extraction, landmarks and normalization, trajectory representations and expert-reference comparison, confidence and abstention, structured findings and coaching explanations, and persistence/backend/frontend integration. These are future scope, not capabilities delivered by M1.
+Later milestones will address video validation/frame extraction, landmarks and normalization, trajectory representations and expert-reference comparison, confidence and abstention, coaching explanations grounded in this contract, and persistence/backend/frontend integration. These remain future scope; M2 only defines and validates the structured evidence boundary.
