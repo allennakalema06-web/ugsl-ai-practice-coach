@@ -11,6 +11,9 @@ dependencies = [
     "fastapi>=0.115,<1.0",
     "pydantic-settings>=2.7,<3.0",
     "uvicorn>=0.34,<1.0",
+    "mediapipe==1.0.1",
+    "opencv-contrib-python==5.0.0.93",
+    "numpy==2.5.3",
 ]
 
 [project.optional-dependencies]
@@ -22,3 +25,4 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra"
+markers = ["integration: optional offline MediaPipe tests using local model assets"]

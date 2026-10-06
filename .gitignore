@@ -18,3 +18,14 @@ dist/
 Thumbs.db
 *.swp
 *.tmp
+# Local CV assets and sensitive inputs/derived artifacts
+.models/
+local-data/
+extracted-frames/
+*.task
+*.tflite
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.webm
