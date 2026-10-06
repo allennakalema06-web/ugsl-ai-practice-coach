@@ -4,19 +4,21 @@ The Uganda Sign Language (UgSL) AI Practice Coach will eventually compare learne
 
 ## Current status and scope
 
-Milestone 1 provides a standalone Python service foundation: FastAPI application factory, versioned process health endpoint, typed environment settings, standard-library JSON application logging, and automated tests. **The current service does not establish UgSL linguistic correctness.** No coaching, storage, authentication, or frontend is implemented.
+Milestone 1 provides a standalone Python service foundation: FastAPI application factory, versioned process health endpoint, typed environment settings, standard-library JSON application logging, and automated tests. **The current service does not establish UgSL linguistic correctness.** No storage, authentication, or frontend is implemented.
 
 Milestone 2 adds Structured Findings Contract v1: validated Pydantic domain models and a generated JSON Schema endpoint. It defines what future analysis components may report; it produces no analysis results or feedback.
 
 Milestone 3 adds an internal video-to-movement-observations pipeline using OpenCV and MediaPipe Tasks. It observes physical coordinates and detection coverage only. No new HTTP route, upload, webcam, or `/analyze` behavior is added.
 
-Milestone 4 adds internal reference comparison of normalized wrist movement paths. It emits measured geometry, evidence sufficiency, and provisional MOVEMENT findings using the unchanged M2 contract. **Geometric similarity is not UgSL linguistic correctness.** No public comparison endpoint or coaching is implemented.
+Milestone 4 adds internal reference comparison of normalized wrist movement paths. It emits measured geometry, evidence sufficiency, and provisional MOVEMENT findings using the unchanged M2 contract. **Geometric similarity is not UgSL linguistic correctness.** No public comparison endpoint is implemented.
+
+Milestone 5 adds internal evidence-grounded Behavior-Aware Interface (BAI) coaching with an offline deterministic provider. It explains M2 findings using validated, accessible text and annotation metadata. No public coaching endpoint, live LLM, or TTS is implemented; M6 integration has not started.
 
 ## Architecture principles
 
 The model is a component of the AI Coach, not the AI Coach itself. Future objective CV and comparison stages will produce structured findings; a later LLM layer may explain those findings and must not independently judge sign correctness from raw video. Insufficient confidence must lead to abstention. Previous learner attempts will eventually be immutable historical records.
 
-Requests currently flow through the FastAPI app in `src/ugsl_ai_coach/main.py` to health and contract routers under `/api/v1`. Settings are loaded when the application is created and attached to that app. Logging is configured at startup, with startup/shutdown messages and DEBUG health messages. Application logs are JSON; Uvicorn retains its own server/access logging. `core/` contains configuration and logging, `api/routes/` contains HTTP routes, `domain/analysis.py` defines the authoritative M2 contract, `cv/` provides internal M3 extraction, and `comparison/` implements internal M4 reference comparison. Future coaching and adapter modules will be added when needed.
+Requests currently flow through the FastAPI app in `src/ugsl_ai_coach/main.py` to health and contract routers under `/api/v1`. Settings are loaded when the application is created and attached to that app. Logging is configured at startup, with startup/shutdown messages and DEBUG health messages. Application logs are JSON; Uvicorn retains its own server/access logging. `core/` contains configuration and logging, `api/routes/` contains HTTP routes, `domain/analysis.py` defines the authoritative M2 contract, `cv/` provides internal M3 extraction, `comparison/` implements internal M4 reference comparison, and `coaching/` implements internal M5 explanations. Integration adapters remain future work.
 
 ## Structured Findings Contract v1
 
@@ -161,7 +163,7 @@ MediaPipe processes input on device. Its [upstream privacy notice](https://pypi.
 
 ## Future milestones
 
-Future work requires expert UgSL data and calibration, deliberate coverage of unsupported linguistic dimensions, and separately designed coaching/persistence/backend/frontend integration. M5 has not been implemented.
+Future work requires expert UgSL data and calibration, deliberate coverage of unsupported linguistic dimensions, and separately designed persistence/backend/frontend integration. M6 has not been started.
 
 ## M4 reference comparison
 
@@ -224,3 +226,62 @@ All status and severity mappings live in the policy and are replaceable within M
 The outcome retains request/reference identifiers, policy and lightweight M3 metadata contexts, both trajectories with gaps, eligibility, metrics linked by finding ID, and the alignment's sequence/frame indices and local distances. This traces findings back to actual source observations without putting arrays in evidence strings or duplicating full ExtractionResults.
 
 No learner/reference recordings or datasets are bundled or downloaded. Tests use typed synthetic M3 observations, including actual M3 normalization for translation/scale checks. Comparison performs no persistence, raw-array logging, network access, public API exposure, or coaching.
+
+## M5 evidence-grounded BAI coaching
+
+**M3 observes. M4 measures. M5 explains.** M5 may explain existing evidence; it never creates evidence. Its only analysis input is a validated M2 `StructuredAnalysisResult`. It never reads video, landmarks, trajectories, DTW internals, M4 reason codes, or arbitrary application data, and never reruns extraction/comparison or calculates a score.
+
+```text
+M3 observation -> M4 comparison -> M2 StructuredAnalysisResult
+  -> ground_analysis -> CoachingContext -> CoachingProvider
+  -> validate_feedback -> CoachingFeedback -> future platform integration
+```
+
+Example internal use (no route, persistence, audio, or API key needed):
+
+```python
+from ugsl_ai_coach.coaching.engine import generate_feedback
+
+# analysis is an existing validated M2 StructuredAnalysisResult.
+feedback = generate_feedback(analysis, feedback_id="FB-review-example")
+```
+
+The engine generates a UUID-based feedback ID when one is not supplied. Tests inject IDs. Grounding revalidates M2 input, rejects ambiguous duplicate finding IDs, ignores unsupported skills, and retains unchanged movement finding IDs, body regions, timestamps, severity and confidence. It derives safe explanations from source status without interpreting deviation or copying free-form evidence strings/model versions into provider input. The context contains confidence as technical evidence-sufficiency metadata, authorized points, status, one action, versioned constraints and safe wording; it excludes engineering similarity. Confidence is not a probability of correctness.
+
+| Source state/finding | Coaching behavior |
+| --- | --- |
+| `COMPLETED` | Analysis finished, not automatically good performance. Empty or unsupported-only findings produce no strengths/corrections. |
+| `STRONG` movement | Cautious, traceable movement strength; no claim of linguistic correctness. |
+| `ACCEPTABLE` movement | Neutral observation within the provisional comparison range; no failure language or exaggerated praise. |
+| `NEEDS_IMPROVEMENT` movement | Traceable movement path difference and optional reference review; no invented directional instruction or severity change. |
+| `WARNING` movement | Acknowledge an upstream warning without guessing its meaning/cause or turning it into a correction. |
+| `INSUFFICIENT_EVIDENCE` movement | Describe missing reliable evidence, never poor performance. |
+| `UNANALYZABLE` | No performance judgment. Generic optional recording retry, with any supported insufficient-evidence interval. |
+| `FAILED` | No performance judgment or technical error text. Generic optional analysis retry later. |
+
+M2 does not carry M4's typed failure reasons. M5 therefore cannot infer hand visibility, framing, lighting, resource limits or other causes from these states. **When the system does not know, the coaching response communicates uncertainty rather than inventing an answer.** Confidence below full evidence sufficiency uses explicitly limited, tentative wording; no new score/confidence threshold is introduced. Any limited or warning/insufficient movement evidence remains acknowledged in the summary even if another observation is prioritized.
+
+### BAI policy and contracts
+
+**Guide the learner toward clarity, not toward obedience.** `policy.py` centralizes `bai-coaching-v1`, `movement-coaching-v1`, authorized templates, action wording and provider-neutral constraints. Learner text gives an observation, its limited meaning and one optional action. Actions start with “You can”; encouragement is process-oriented rather than unsupported praise. There are no urgency, shame, identity judgments, threats, progression locks or course-completion decisions. Real movement differences remain explicit; emotional safety does not replace truthful feedback with reassurance.
+
+To bound cognitive load, grounding selects at most one strength, correction and observation, ordered by supplied severity descending, confidence descending and finding ID for deterministic ties. Source severity/confidence are retained, never recalculated. Lower-priority findings remain in the original analysis; feedback is a focused view rather than a replacement evidence record.
+
+All M5 models reject extra fields and are frozen; collections are tuples. `CoachingFeedback` contains validated feedback/attempt/analysis IDs, upstream status, summary, strengths, corrections, neutral/uncertainty observations, a typed `RecommendedAction`, encouragement, optional `audio_text`, annotations and `ProviderMetadata`. `CoachingPoint` traces each strength/correction/observation to a source finding and its skill/body/interval, with message and reason. `AuthorizedFact` adds unchanged source status/severity/confidence inside the context. Actions have only advisory semantics: `REVIEW_MOVEMENT`, `RETRY_ATTEMPT`, `RETRY_CAPTURE`, `TRY_LATER`.
+
+```text
+Learner feedback -> correction/strength -> finding_id
+  -> StructuredFinding -> M4 evidence -> source observations
+```
+
+`VisualAnnotation` retains source finding ID, MOVEMENT skill, body region, exact interval and an already-accessible point label. No video rendering or invented timestamps occurs. Annotations are metadata for a future frontend; they add no facts absent from text. `accessible_text` provides the complete reading order: summary, points and reasons, next action, encouragement. Audio is absent by default. The deterministic provider can optionally supply `audio_text`, which must equal that complete text exactly. No TTS or audio files exist; nothing requires audio.
+
+### Providers and fail-closed validation
+
+`CoachingProvider` is a vendor-neutral protocol taking only `CoachingContext` and returning `CoachingFeedback`. `DeterministicCoachingProvider` assembles the authorized facts offline. Provider metadata records provider type, policy version and template version outside learner text. No dependencies, credentials, network, LLM SDK or vendor integration are added.
+
+V1 deliberately uses a **closed authorized vocabulary**. Final validation revalidates the typed result and requires exact agreement with the trusted context for all identifiers, status, source points, categories, skill/body/timestamps, learner wording, action and encouragement. It also checks exact annotations, provider metadata and optional audio equivalence. Providers cannot omit the prioritized difference, add praise, alter severity through wording, expand/shrink an interval, move a strength into corrections, or hide a claim in summary/action/audio. Violations raise `GroundingViolation` (or schema validation errors); no feedback is returned and no hallucinated claim is silently repaired. Unexpected provider exceptions propagate to the internal caller, not to learner-facing text. There is no automatic fallback masking a provider failure.
+
+A future LLM provider must obey these same constraints. Arbitrary paraphrases are intentionally rejected in v1: unrestricted language would require separately designed semantic validation and a versioned policy change, not merely schema compliance. The central constraints require evidence-only explanations, uncertainty, unchanged source attribution/severity/times, agency and respectful language. M5 never claims handshape, orientation, location, timing, sequence, movement range, body position, direction, grammar, meaning, facial/non-manual correctness or complete UgSL correctness. Engineering similarity is never presented as a grade, percentage, mastery, pass threshold or linguistic accuracy.
+
+Coaching tests use only typed M2 fixtures, including malicious provider output, incomplete evidence, every state, unsupported skills, source/annotation tampering, closed-language BAI rules and audio equivalence. A fresh-process test blocks network, CV/comparison, MediaPipe, external AI and TTS imports while exercising coaching. Existing M1–M4 tests remain unchanged. M5 retains data in memory only and adds no logging of learner evidence or persistence.
