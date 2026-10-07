@@ -8,7 +8,7 @@ ENV PYTHONUNBUFFERED=1 \
 
 # OpenCV GL/GLib, MediaPipe EGL runtime and sounddevice import; no desktop stack.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends libgl1 libegl1 libglib2.0-0 libportaudio2 \
+    && apt-get install -y --no-install-recommends libgl1 libegl1 libgles2 libglib2.0-0 libportaudio2 \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --gid 10001 ugsl \
     && useradd --uid 10001 --gid ugsl --no-create-home --shell /usr/sbin/nologin ugsl \

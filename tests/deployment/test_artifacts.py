@@ -68,7 +68,7 @@ def test_docker_install_and_non_root():
     assert 'CMD ["python", "-m", "ugsl_ai_coach.deployment", "api"]' in docker
     assert [line for line in docker.splitlines() if line.startswith('COPY ')] == [
         'COPY pyproject.toml README.md ./', 'COPY src/ ./src/']
-    assert apt_packages(docker) == {'libgl1', 'libegl1', 'libglib2.0-0', 'libportaudio2'}
+    assert apt_packages(docker) == {'libgl1', 'libegl1', 'libgles2', 'libglib2.0-0', 'libportaudio2'}
     assert 'model_paths()' in docker and 'import cv2, mediapipe, psycopg, boto3, prometheus_client' in docker
 
 
@@ -120,7 +120,7 @@ def test_ci_release_gates():
     assert job['env']['UGSL_TEST_DATABASE_URL']
     steps = job['steps']
     native = next(s for s in steps if s.get('name') == 'Minimal native runtime libraries')
-    assert apt_packages(native['run']) == {'libgl1', 'libegl1', 'libglib2.0-0', 'libportaudio2'}
+    assert apt_packages(native['run']) == {'libgl1', 'libegl1', 'libgles2', 'libglib2.0-0', 'libportaudio2'}
     setup = next(s for s in steps if s.get('uses', '').startswith('actions/setup-python'))
     assert setup['with']['python-version'] == '3.13'
     runs = '\n'.join(s.get('run', '') for s in steps)
